@@ -63,6 +63,19 @@ async function requireAuth(req: express.Request, res: express.Response, next: ex
   next();
 }
 
+// Debug endpoint to check environment (remove in production)
+app.get("/api/debug/env", (req, res) => {
+  res.json({
+    hasAdminEmail: !!process.env.ADMIN_EMAIL,
+    hasAdminPassword: !!process.env.ADMIN_PASSWORD,
+    hasSupabaseUrl: !!process.env.SUPABASE_URL || !!process.env.VITE_SUPABASE_URL,
+    hasSupabaseAnonKey: !!process.env.SUPABASE_ANON_KEY || !!process.env.VITE_SUPABASE_ANON_KEY,
+    hasDatabaseUrl: !!process.env.SUPABASE_DATABASE_URL,
+    supabaseConfigured: !!supabase,
+    nodeEnv: process.env.NODE_ENV,
+  });
+});
+
 app.get("/api/auth/session", async (req, res) => {
   const userId = await getCurrentUserIdFromToken(req);
   if (userId) {
@@ -1005,28 +1018,8 @@ app.get("/api/order-confirmation/:token", async (req, res) => {
 });
 
 export default function handler(req: VercelRequest, res: VercelResponse) {
-  // Get original URL from Vercel's forwarding headers
-  const forwardedPath = req.headers['x-forwarded-path'] as string;
-  const originalUrl = req.headers['x-original-url'] as string;
-  const matchedPath = req.headers['x-matched-path'] as string;
-  
-  // Restore original URL for Express routing when Vercel routes to this handler
-  if (forwardedPath) {
-    req.url = forwardedPath;
-  } else if (originalUrl) {
-    req.url = originalUrl;
-  } else if (matchedPath && !matchedPath.includes('index.ts')) {
-    req.url = matchedPath;
-  }
-  
-  // Handle Vercel's path format which may include the destination file
-  if (req.url?.includes('/api/index.ts')) {
-    const urlParts = (req as any).query || {};
-    const path = Object.keys(urlParts)[0];
-    if (path && path.startsWith('/')) {
-      req.url = path;
-    }
-  }
-  
+  // Vercel rewrites preserve the original URL in req.url
+  // Just pass through to Express
+  console.log("[Vercel API] Request URL:", req.url, "Method:", req.method);
   return app(req as any, res as any);
 }
