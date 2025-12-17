@@ -1,17 +1,25 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
+import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "";
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || "";
 
-async function getSupabaseAdmin() {
-  const { createClient } = await import("@supabase/supabase-js");
-  return createClient(supabaseUrl, supabaseServiceKey);
+let adminClient: SupabaseClient | null = null;
+let anonClient: SupabaseClient | null = null;
+
+function getSupabaseAdmin(): SupabaseClient {
+  if (!adminClient && supabaseUrl && supabaseServiceKey) {
+    adminClient = createClient(supabaseUrl, supabaseServiceKey);
+  }
+  return adminClient!;
 }
 
-async function getSupabaseClient() {
-  const { createClient } = await import("@supabase/supabase-js");
-  return createClient(supabaseUrl, supabaseAnonKey);
+function getSupabaseClient(): SupabaseClient {
+  if (!anonClient && supabaseUrl && supabaseAnonKey) {
+    anonClient = createClient(supabaseUrl, supabaseAnonKey);
+  }
+  return anonClient!;
 }
 
 async function getCurrentUser(req: VercelRequest) {
@@ -19,11 +27,15 @@ async function getCurrentUser(req: VercelRequest) {
   if (!authHeader?.startsWith("Bearer ")) return null;
   
   const token = authHeader.substring(7);
-  const supabase = await getSupabaseClient();
+  const supabase = getSupabaseClient();
+  if (!supabase) return null;
+  
   const { data: { user }, error } = await supabase.auth.getUser(token);
   if (error || !user) return null;
   
-  const admin = await getSupabaseAdmin();
+  const admin = getSupabaseAdmin();
+  if (!admin) return null;
+  
   const { data } = await admin.from("users").select("*").eq("email", user.email).single();
   
   if (!data && user.email) {
@@ -38,7 +50,9 @@ async function getCurrentUser(req: VercelRequest) {
 }
 
 async function getOrCreateDemoUser() {
-  const admin = await getSupabaseAdmin();
+  const admin = getSupabaseAdmin();
+  if (!admin) return null;
+  
   const { data } = await admin.from("users").select("*").eq("email", "demo@example.com").single();
   if (data) return data;
   
@@ -63,7 +77,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
   
   try {
-    const admin = await getSupabaseAdmin();
+    const admin = getSupabaseAdmin();
     
     // Health check
     if (path === "/health" || path === "/") {
