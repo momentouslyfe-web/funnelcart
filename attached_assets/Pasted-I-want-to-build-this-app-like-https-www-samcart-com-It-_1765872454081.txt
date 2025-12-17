@@ -1,0 +1,110 @@
+I want to build this app like "https://www.samcart.com/"
+It is a platform for selling digital products but also have option for selling physical product as well. It works like sale funnel for every product instead of just checkout pages. I have added the features I need for this app below. Also I have marked the features as "Later implemetation" which I would like to implement later, but should have in plan.
+
+
+" 1-Click Upsells
+Cart Abandonment
+Checkout Anywhere
+CheckoutOS
+Courses App
+Customer Hub
+Integration Engine
+Order Bumps & Add Ons
+Payment Options
+Payment Processors
+Reporting
+Sales Pages
+Subscriptions
+Accept Payments Online
+
+
+Sell Anything
+
+Digital Products & Downloads
+Sell your e-books, PDFs, services and more.
+Sellers should have upload single of multiple files for any product, And it will generate download link automatically and the files will be added to the media library of the sellers. Also, after purchasing any product customers of the sellers can download the products file, also customers will get email with download link of the product file or files.
+
+
+Physical Products
+Sell more of your physical products and goods with tools built to convert.
+
+
+Embedded Checkout
+Integrate checkout into any page on your website.
+
+Slide Checkout
+Add a checkout to any button, anywhere.
+express checkout
+Express Checkout
+Lightning fast checkout to increase your conversions.
+
+Pages AI
+NEW
+AI powered page builder for sales, leads, and more.
+Scale Your Profits
+Speed checkout optimizations and autofills
+CheckoutOS
+Smart technology that makes you more money.
+order bump and add ons
+Order Bumps & Add Ons
+Maximize sales by offering recommend products.
+upsells and downsells
+1-Click Upsells
+
+
+Payment Methods
+Flexible options for how customers pay for their order.
+
+Coupons
+Convert more customers with dynamic coupons.
+Cart abandonment features 
+Cart Abandonment
+Automatically capture and recover lost sales.
+
+
+Customer Hub
+Automate your customer support.
+
+Shipping &
+Logistics- "Later implementation"
+Automate shipping & streamline fullfillment
+
+Pixels & Analytics
+Pixel integration and tracking made easy.
+Integration engine
+Integrations
+Plugin your favorite tools for email, community, etc.
+
+
+Affiliate Center- "Later implementation"
+Recruit your own private army of sales partners.
+
+NEW PAGES AI
+Instantly design high converting pages with AI
+"
+Also, I need to add some base features for this app as well.
+This app is a saas, so seller can sign up and login with google, sllers will have all the fuctionality they need like the features I mentioned. 
+
+Super admin the platform owners should have control over everything from admin panel like users management, subscription plan managements with features enable and disable like other saas app, coupon management for sellers, payment gateway integration and managements for seller by which sellers can pay and use the platform, order managements, facebook pixel integration with server side traking, matching score improvements, event deduplications, etc, email integration for platform, google analytics integrations,  AFFILIATES system for the platform where seller can refer and earn commission with the features below,
+
+Affiliate Settings
+
+Commission Tiers
+
+Affiliates
+
+Upgrade Requests
+
+Coupon Requests
+
+Fraud Detection
+
+Payouts
+
+Performance,
+
+Full analytics dashboard for the platform etc.
+
+Api intregation for AI Page builder for sellers- I will use gemini API with gemini-3-pro and other models with latest release as well, and openrouter api with latest models.
+
+Also, admin can create temeplates for sales funnels for everysteps and add them on templates library with free and premium or on a subscription paln for exclusive use, and sellers can use them from the templates library during creating sales funnels.

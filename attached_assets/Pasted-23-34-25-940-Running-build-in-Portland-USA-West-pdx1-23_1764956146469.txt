@@ -1,0 +1,33 @@
+23:34:25.940 Running build in Portland, USA (West) – pdx1
+23:34:25.941 Build machine configuration: 2 cores, 8 GB
+23:34:25.950 Cloning github.com/momentouslyfe-web/DigitalCart (Branch: main, Commit: de54217)
+23:34:25.951 Skipping build cache, deployment was triggered without cache.
+23:34:26.772 Cloning completed: 822.000ms
+23:34:27.137 Running "vercel build"
+23:34:27.582 Vercel CLI 49.0.0
+23:34:28.283 Installing dependencies...
+23:34:33.312 npm warn deprecated @esbuild-kit/esm-loader@2.6.5: Merged into tsx: https://tsx.is
+23:34:33.337 npm warn deprecated @esbuild-kit/core-utils@3.3.2: Merged into tsx: https://tsx.is
+23:34:40.327 
+23:34:40.328 added 708 packages in 12s
+23:34:40.328 
+23:34:40.328 83 packages are looking for funding
+23:34:40.329   run `npm fund` for details
+23:34:40.920 [36mvite v5.4.20 [32mbuilding for production...[36m[39m
+23:34:40.974 transforming...
+23:34:42.095 
+23:34:42.096 A PostCSS plugin did not pass the `from` option to `postcss.parse`. This may cause imported assets to be incorrectly transformed. If you've recently added a PostCSS plugin that raised this warning, please contact the package author to fix the issue.
+23:34:47.801 [32m✓[39m 2852 modules transformed.
+23:34:48.437 rendering chunks...
+23:34:48.454 computing gzip size...
+23:34:48.484 [2mdist/[22m[32mindex.html                 [39m[1m[2m    2.52 kB[22m[1m[22m[2m │ gzip:   0.93 kB[22m
+23:34:48.484 [2mdist/[22m[2massets/[22m[35mindex-DoozRBDw.css  [39m[1m[2m   80.03 kB[22m[1m[22m[2m │ gzip:  12.83 kB[22m
+23:34:48.485 [2mdist/[22m[2massets/[22m[36mindex-B_QlhxPA.js   [39m[1m[33m1,003.95 kB[39m[22m[2m │ gzip: 283.17 kB[22m
+23:34:48.485 [33m
+23:34:48.485 (!) Some chunks are larger than 500 kB after minification. Consider:
+23:34:48.485 - Using dynamic import() to code-split the application
+23:34:48.485 - Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+23:34:48.490 - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.[39m
+23:34:48.490 [32m✓ built in 7.54s[39m
+23:34:48.549 Error: No Output Directory named "dist" found after the Build completed. Update vercel.json#outputDirectory to ensure the correct output directory is generated.
+23:34:48.549 Learn More: https://vercel.link/missing-public-directory
