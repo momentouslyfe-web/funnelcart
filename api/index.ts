@@ -1005,5 +1005,28 @@ app.get("/api/order-confirmation/:token", async (req, res) => {
 });
 
 export default function handler(req: VercelRequest, res: VercelResponse) {
+  // Get original URL from Vercel's forwarding headers
+  const forwardedPath = req.headers['x-forwarded-path'] as string;
+  const originalUrl = req.headers['x-original-url'] as string;
+  const matchedPath = req.headers['x-matched-path'] as string;
+  
+  // Restore original URL for Express routing when Vercel routes to this handler
+  if (forwardedPath) {
+    req.url = forwardedPath;
+  } else if (originalUrl) {
+    req.url = originalUrl;
+  } else if (matchedPath && !matchedPath.includes('index.ts')) {
+    req.url = matchedPath;
+  }
+  
+  // Handle Vercel's path format which may include the destination file
+  if (req.url?.includes('/api/index.ts')) {
+    const urlParts = (req as any).query || {};
+    const path = Object.keys(urlParts)[0];
+    if (path && path.startsWith('/')) {
+      req.url = path;
+    }
+  }
+  
   return app(req as any, res as any);
 }
