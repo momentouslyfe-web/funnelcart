@@ -10,8 +10,6 @@
     }
   },
   "rewrites": [
-    { "source": "/api/health", "destination": "/api/health" },
-    { "source": "/api/debug", "destination": "/api/debug" },
     { "source": "/api/:path*", "destination": "/api" },
     { "source": "/:path*", "destination": "/index.html" }
   ],
