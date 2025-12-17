@@ -1,4 +1,4 @@
-import type { Block } from "@shared/schema";
+import type { Block } from "../../shared/schema";
 
 export interface AIGenerationRequest {
   productName: string;

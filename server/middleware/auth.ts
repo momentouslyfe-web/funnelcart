@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
-import type { User, Customer } from "@shared/schema";
+import type { User, Customer } from "../../shared/schema";
 
 export interface AuthenticatedRequest extends Request {
   sellerUser?: User;

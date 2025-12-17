@@ -79,7 +79,7 @@ import {
   type InsertProductFile,
   type PlatformPaymentGateway,
   type InsertPlatformPaymentGateway,
-} from "@shared/schema";
+} from "../shared/schema";
 
 export interface IStorage {
   // Users
