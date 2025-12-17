@@ -1,7 +1,25 @@
 import express from "express";
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { storage } from "../server/storage";
 import { createClient } from "@supabase/supabase-js";
+
+// Lazy load storage to prevent initialization errors
+let storage: any = null;
+let storageError: Error | null = null;
+
+async function getStorage() {
+  if (storageError) throw storageError;
+  if (storage) return storage;
+  
+  try {
+    const module = await import("../server/storage");
+    storage = module.storage;
+    return storage;
+  } catch (err) {
+    storageError = err as Error;
+    console.error("Failed to load storage module:", err);
+    throw err;
+  }
+}
 
 const app = express();
 
@@ -25,9 +43,10 @@ async function getCurrentUserIdFromToken(req: express.Request): Promise<string |
     const { data: { user }, error } = await supabase.auth.getUser(token);
     if (error || !user) return null;
     
-    let dbUser = await storage.getUserByEmail(user.email || "");
+    const store = await getStorage();
+    let dbUser = await store.getUserByEmail(user.email || "");
     if (!dbUser && user.email) {
-      dbUser = await storage.createUser({
+      dbUser = await store.createUser({
         email: user.email,
         supabaseId: user.id,
         businessName: user.user_metadata?.full_name || "My Store",
@@ -43,9 +62,10 @@ async function getCurrentUserId(req: express.Request): Promise<string> {
   const userId = await getCurrentUserIdFromToken(req);
   if (userId) return userId;
   
-  let user = await storage.getUserByEmail("demo@example.com");
+  const store = await getStorage();
+  let user = await store.getUserByEmail("demo@example.com");
   if (!user) {
-    user = await storage.createUser({
+    user = await store.createUser({
       email: "demo@example.com",
       password: "demo123",
       businessName: "Demo Store",
@@ -63,8 +83,22 @@ async function requireAuth(req: express.Request, res: express.Response, next: ex
   next();
 }
 
+// Health check endpoint (no database required)
+app.get("/api/health", (req, res) => {
+  res.json({ status: "ok", timestamp: new Date().toISOString() });
+});
+
 // Debug endpoint to check environment (remove in production)
-app.get("/api/debug/env", (req, res) => {
+app.get("/api/debug/env", async (req, res) => {
+  let storageOk = false;
+  let storageErrorMsg = null;
+  try {
+    await getStorage();
+    storageOk = true;
+  } catch (err: any) {
+    storageErrorMsg = err?.message || String(err);
+  }
+  
   res.json({
     hasAdminEmail: !!process.env.ADMIN_EMAIL,
     hasAdminPassword: !!process.env.ADMIN_PASSWORD,
@@ -72,6 +106,8 @@ app.get("/api/debug/env", (req, res) => {
     hasSupabaseAnonKey: !!process.env.SUPABASE_ANON_KEY || !!process.env.VITE_SUPABASE_ANON_KEY,
     hasDatabaseUrl: !!process.env.SUPABASE_DATABASE_URL,
     supabaseConfigured: !!supabase,
+    storageOk,
+    storageError: storageErrorMsg,
     nodeEnv: process.env.NODE_ENV,
   });
 });
@@ -79,7 +115,7 @@ app.get("/api/debug/env", (req, res) => {
 app.get("/api/auth/session", async (req, res) => {
   const userId = await getCurrentUserIdFromToken(req);
   if (userId) {
-    const user = await storage.getUser(userId);
+    const user = await (await getStorage()).getUser(userId);
     res.json({
       isAuthenticated: true,
       user: user ? {
@@ -97,7 +133,7 @@ app.get("/api/auth/session", async (req, res) => {
 
 app.get("/api/public/plans", async (req, res) => {
   try {
-    const plans = await storage.getSubscriptionPlans();
+    const plans = await (await getStorage()).getSubscriptionPlans();
     const activePlans = plans.filter(p => p.isActive).sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
     res.json(activePlans);
   } catch (error) {
@@ -109,7 +145,7 @@ app.get("/api/public/plans", async (req, res) => {
 app.get("/api/products", async (req, res) => {
   try {
     const userId = await getCurrentUserId(req);
-    const products = await storage.getProducts(userId);
+    const products = await (await getStorage()).getProducts(userId);
     res.json(products);
   } catch (error) {
     console.error("Error fetching products:", error);
@@ -119,7 +155,7 @@ app.get("/api/products", async (req, res) => {
 
 app.get("/api/products/:id", async (req, res) => {
   try {
-    const product = await storage.getProduct(req.params.id);
+    const product = await (await getStorage()).getProduct(req.params.id);
     if (!product) {
       return res.status(404).json({ error: "Product not found" });
     }
@@ -133,7 +169,7 @@ app.get("/api/products/:id", async (req, res) => {
 app.post("/api/products", async (req, res) => {
   try {
     const userId = await getCurrentUserId(req);
-    const product = await storage.createProduct({ ...req.body, userId });
+    const product = await (await getStorage()).createProduct({ ...req.body, userId });
     res.status(201).json(product);
   } catch (error) {
     console.error("Error creating product:", error);
@@ -143,7 +179,7 @@ app.post("/api/products", async (req, res) => {
 
 app.patch("/api/products/:id", async (req, res) => {
   try {
-    const product = await storage.updateProduct(req.params.id, req.body);
+    const product = await (await getStorage()).updateProduct(req.params.id, req.body);
     if (!product) return res.status(404).json({ error: "Product not found" });
     res.json(product);
   } catch (error) {
@@ -154,7 +190,7 @@ app.patch("/api/products/:id", async (req, res) => {
 
 app.delete("/api/products/:id", async (req, res) => {
   try {
-    const deleted = await storage.deleteProduct(req.params.id);
+    const deleted = await (await getStorage()).deleteProduct(req.params.id);
     if (!deleted) return res.status(404).json({ error: "Product not found" });
     res.status(204).send();
   } catch (error) {
@@ -166,7 +202,7 @@ app.delete("/api/products/:id", async (req, res) => {
 app.get("/api/checkout-pages", async (req, res) => {
   try {
     const userId = await getCurrentUserId(req);
-    const pages = await storage.getCheckoutPages(userId);
+    const pages = await (await getStorage()).getCheckoutPages(userId);
     res.json(pages);
   } catch (error) {
     console.error("Error fetching checkout pages:", error);
@@ -176,7 +212,7 @@ app.get("/api/checkout-pages", async (req, res) => {
 
 app.get("/api/checkout-pages/:id", async (req, res) => {
   try {
-    const page = await storage.getCheckoutPage(req.params.id);
+    const page = await (await getStorage()).getCheckoutPage(req.params.id);
     if (!page) return res.status(404).json({ error: "Checkout page not found" });
     res.json(page);
   } catch (error) {
@@ -187,7 +223,7 @@ app.get("/api/checkout-pages/:id", async (req, res) => {
 
 app.get("/api/checkout-pages/slug/:slug", async (req, res) => {
   try {
-    const page = await storage.getCheckoutPageBySlug(req.params.slug);
+    const page = await (await getStorage()).getCheckoutPageBySlug(req.params.slug);
     if (!page) return res.status(404).json({ error: "Checkout page not found" });
     res.json(page);
   } catch (error) {
@@ -199,7 +235,7 @@ app.get("/api/checkout-pages/slug/:slug", async (req, res) => {
 app.post("/api/checkout-pages", async (req, res) => {
   try {
     const userId = await getCurrentUserId(req);
-    const page = await storage.createCheckoutPage({ ...req.body, userId });
+    const page = await (await getStorage()).createCheckoutPage({ ...req.body, userId });
     res.status(201).json(page);
   } catch (error) {
     console.error("Error creating checkout page:", error);
@@ -209,7 +245,7 @@ app.post("/api/checkout-pages", async (req, res) => {
 
 app.patch("/api/checkout-pages/:id", async (req, res) => {
   try {
-    const page = await storage.updateCheckoutPage(req.params.id, req.body);
+    const page = await (await getStorage()).updateCheckoutPage(req.params.id, req.body);
     if (!page) return res.status(404).json({ error: "Checkout page not found" });
     res.json(page);
   } catch (error) {
@@ -220,7 +256,7 @@ app.patch("/api/checkout-pages/:id", async (req, res) => {
 
 app.delete("/api/checkout-pages/:id", async (req, res) => {
   try {
-    const deleted = await storage.deleteCheckoutPage(req.params.id);
+    const deleted = await (await getStorage()).deleteCheckoutPage(req.params.id);
     if (!deleted) return res.status(404).json({ error: "Checkout page not found" });
     res.status(204).send();
   } catch (error) {
@@ -232,7 +268,7 @@ app.delete("/api/checkout-pages/:id", async (req, res) => {
 app.get("/api/coupons", async (req, res) => {
   try {
     const userId = await getCurrentUserId(req);
-    const coupons = await storage.getCoupons(userId);
+    const coupons = await (await getStorage()).getCoupons(userId);
     res.json(coupons);
   } catch (error) {
     console.error("Error fetching coupons:", error);
@@ -243,7 +279,7 @@ app.get("/api/coupons", async (req, res) => {
 app.post("/api/coupons", async (req, res) => {
   try {
     const userId = await getCurrentUserId(req);
-    const coupon = await storage.createCoupon({ ...req.body, userId });
+    const coupon = await (await getStorage()).createCoupon({ ...req.body, userId });
     res.status(201).json(coupon);
   } catch (error) {
     console.error("Error creating coupon:", error);
@@ -253,7 +289,7 @@ app.post("/api/coupons", async (req, res) => {
 
 app.patch("/api/coupons/:id", async (req, res) => {
   try {
-    const coupon = await storage.updateCoupon(req.params.id, req.body);
+    const coupon = await (await getStorage()).updateCoupon(req.params.id, req.body);
     if (!coupon) return res.status(404).json({ error: "Coupon not found" });
     res.json(coupon);
   } catch (error) {
@@ -264,7 +300,7 @@ app.patch("/api/coupons/:id", async (req, res) => {
 
 app.delete("/api/coupons/:id", async (req, res) => {
   try {
-    const deleted = await storage.deleteCoupon(req.params.id);
+    const deleted = await (await getStorage()).deleteCoupon(req.params.id);
     if (!deleted) return res.status(404).json({ error: "Coupon not found" });
     res.status(204).send();
   } catch (error) {
@@ -277,7 +313,7 @@ app.post("/api/coupons/validate", async (req, res) => {
   try {
     const userId = await getCurrentUserId(req);
     const { code } = req.body;
-    const coupon = await storage.getCouponByCode(code, userId);
+    const coupon = await (await getStorage()).getCouponByCode(code, userId);
     
     if (!coupon) return res.status(404).json({ error: "Coupon not found" });
     if (!coupon.isActive) return res.status(400).json({ error: "Coupon is inactive" });
@@ -298,7 +334,7 @@ app.post("/api/coupons/validate", async (req, res) => {
 app.get("/api/customers", async (req, res) => {
   try {
     const userId = await getCurrentUserId(req);
-    const customers = await storage.getCustomers(userId);
+    const customers = await (await getStorage()).getCustomers(userId);
     res.json(customers);
   } catch (error) {
     console.error("Error fetching customers:", error);
@@ -308,7 +344,7 @@ app.get("/api/customers", async (req, res) => {
 
 app.get("/api/customers/:id", async (req, res) => {
   try {
-    const customer = await storage.getCustomer(req.params.id);
+    const customer = await (await getStorage()).getCustomer(req.params.id);
     if (!customer) return res.status(404).json({ error: "Customer not found" });
     res.json(customer);
   } catch (error) {
@@ -320,7 +356,7 @@ app.get("/api/customers/:id", async (req, res) => {
 app.get("/api/orders", async (req, res) => {
   try {
     const userId = await getCurrentUserId(req);
-    const orders = await storage.getOrders(userId);
+    const orders = await (await getStorage()).getOrders(userId);
     res.json(orders);
   } catch (error) {
     console.error("Error fetching orders:", error);
@@ -330,7 +366,7 @@ app.get("/api/orders", async (req, res) => {
 
 app.get("/api/orders/:id", async (req, res) => {
   try {
-    const order = await storage.getOrder(req.params.id);
+    const order = await (await getStorage()).getOrder(req.params.id);
     if (!order) return res.status(404).json({ error: "Order not found" });
     res.json(order);
   } catch (error) {
@@ -342,7 +378,7 @@ app.get("/api/orders/:id", async (req, res) => {
 app.get("/api/email-templates", async (req, res) => {
   try {
     const userId = await getCurrentUserId(req);
-    const templates = await storage.getEmailTemplates(userId);
+    const templates = await (await getStorage()).getEmailTemplates(userId);
     res.json(templates);
   } catch (error) {
     console.error("Error fetching email templates:", error);
@@ -353,7 +389,7 @@ app.get("/api/email-templates", async (req, res) => {
 app.post("/api/email-templates", async (req, res) => {
   try {
     const userId = await getCurrentUserId(req);
-    const template = await storage.createEmailTemplate({ ...req.body, userId });
+    const template = await (await getStorage()).createEmailTemplate({ ...req.body, userId });
     res.status(201).json(template);
   } catch (error) {
     console.error("Error creating email template:", error);
@@ -363,7 +399,7 @@ app.post("/api/email-templates", async (req, res) => {
 
 app.patch("/api/email-templates/:id", async (req, res) => {
   try {
-    const template = await storage.updateEmailTemplate(req.params.id, req.body);
+    const template = await (await getStorage()).updateEmailTemplate(req.params.id, req.body);
     if (!template) return res.status(404).json({ error: "Email template not found" });
     res.json(template);
   } catch (error) {
@@ -374,7 +410,7 @@ app.patch("/api/email-templates/:id", async (req, res) => {
 
 app.delete("/api/email-templates/:id", async (req, res) => {
   try {
-    const deleted = await storage.deleteEmailTemplate(req.params.id);
+    const deleted = await (await getStorage()).deleteEmailTemplate(req.params.id);
     if (!deleted) return res.status(404).json({ error: "Email template not found" });
     res.status(204).send();
   } catch (error) {
@@ -386,9 +422,9 @@ app.delete("/api/email-templates/:id", async (req, res) => {
 app.get("/api/analytics", async (req, res) => {
   try {
     const userId = await getCurrentUserId(req);
-    const orders = await storage.getOrders(userId);
-    const customers = await storage.getCustomers(userId);
-    const products = await storage.getProducts(userId);
+    const orders = await (await getStorage()).getOrders(userId);
+    const customers = await (await getStorage()).getCustomers(userId);
+    const products = await (await getStorage()).getProducts(userId);
     
     const totalRevenue = orders.reduce((sum, o) => sum + Number(o.totalAmount || 0), 0);
     const totalOrders = orders.length;
@@ -457,7 +493,7 @@ app.get("/api/analytics", async (req, res) => {
 app.post("/api/settings/general", async (req, res) => {
   try {
     const userId = await getCurrentUserId(req);
-    await storage.updateUser(userId, { businessName: req.body.storeName });
+    await (await getStorage()).updateUser(userId, { businessName: req.body.storeName });
     res.json({ success: true });
   } catch (error) {
     console.error("Error saving settings:", error);
@@ -468,7 +504,7 @@ app.post("/api/settings/general", async (req, res) => {
 app.post("/api/settings/payment", async (req, res) => {
   try {
     const userId = await getCurrentUserId(req);
-    await storage.updateUser(userId, {
+    await (await getStorage()).updateUser(userId, {
       uddoktapayApiKey: req.body.uddoktapayApiKey,
       uddoktapayApiUrl: req.body.uddoktapayApiUrl,
     });
@@ -482,7 +518,7 @@ app.post("/api/settings/payment", async (req, res) => {
 app.post("/api/settings/tracking", async (req, res) => {
   try {
     const userId = await getCurrentUserId(req);
-    await storage.updateUser(userId, {
+    await (await getStorage()).updateUser(userId, {
       facebookPixelId: req.body.fbPixelId,
       facebookAccessToken: req.body.fbAccessToken,
     });
@@ -496,7 +532,7 @@ app.post("/api/settings/tracking", async (req, res) => {
 app.post("/api/settings/email", async (req, res) => {
   try {
     const userId = await getCurrentUserId(req);
-    await storage.updateUser(userId, { fromEmail: req.body.fromEmail });
+    await (await getStorage()).updateUser(userId, { fromEmail: req.body.fromEmail });
     res.json({ success: true });
   } catch (error) {
     console.error("Error saving email settings:", error);
@@ -507,7 +543,7 @@ app.post("/api/settings/email", async (req, res) => {
 app.post("/api/settings/domain", async (req, res) => {
   try {
     const userId = await getCurrentUserId(req);
-    await storage.updateUser(userId, { customDomain: req.body.customDomain });
+    await (await getStorage()).updateUser(userId, { customDomain: req.body.customDomain });
     res.json({ success: true });
   } catch (error) {
     console.error("Error saving domain settings:", error);
@@ -518,7 +554,7 @@ app.post("/api/settings/domain", async (req, res) => {
 app.get("/api/funnels", async (req, res) => {
   try {
     const userId = await getCurrentUserId(req);
-    const funnels = await storage.getFunnels(userId);
+    const funnels = await (await getStorage()).getFunnels(userId);
     res.json(funnels);
   } catch (error) {
     console.error("Error fetching funnels:", error);
@@ -528,7 +564,7 @@ app.get("/api/funnels", async (req, res) => {
 
 app.get("/api/funnels/:id", async (req, res) => {
   try {
-    const funnel = await storage.getFunnel(req.params.id);
+    const funnel = await (await getStorage()).getFunnel(req.params.id);
     if (!funnel) return res.status(404).json({ error: "Funnel not found" });
     res.json(funnel);
   } catch (error) {
@@ -540,7 +576,7 @@ app.get("/api/funnels/:id", async (req, res) => {
 app.post("/api/funnels", async (req, res) => {
   try {
     const userId = await getCurrentUserId(req);
-    const funnel = await storage.createFunnel({ ...req.body, userId });
+    const funnel = await (await getStorage()).createFunnel({ ...req.body, userId });
     res.status(201).json(funnel);
   } catch (error) {
     console.error("Error creating funnel:", error);
@@ -550,7 +586,7 @@ app.post("/api/funnels", async (req, res) => {
 
 app.patch("/api/funnels/:id", async (req, res) => {
   try {
-    const funnel = await storage.updateFunnel(req.params.id, req.body);
+    const funnel = await (await getStorage()).updateFunnel(req.params.id, req.body);
     if (!funnel) return res.status(404).json({ error: "Funnel not found" });
     res.json(funnel);
   } catch (error) {
@@ -561,7 +597,7 @@ app.patch("/api/funnels/:id", async (req, res) => {
 
 app.delete("/api/funnels/:id", async (req, res) => {
   try {
-    const deleted = await storage.deleteFunnel(req.params.id);
+    const deleted = await (await getStorage()).deleteFunnel(req.params.id);
     if (!deleted) return res.status(404).json({ error: "Funnel not found" });
     res.status(204).send();
   } catch (error) {
@@ -573,15 +609,15 @@ app.delete("/api/funnels/:id", async (req, res) => {
 app.get("/api/subscription", async (req, res) => {
   try {
     const userId = await getCurrentUserId(req);
-    const user = await storage.getUser(userId);
+    const user = await (await getStorage()).getUser(userId);
     if (!user) return res.status(404).json({ error: "User not found" });
     
     let currentPlan = null;
     if (user.planId) {
-      currentPlan = await storage.getSubscriptionPlan(user.planId);
+      currentPlan = await (await getStorage()).getSubscriptionPlan(user.planId);
     }
     
-    const plans = await storage.getSubscriptionPlans();
+    const plans = await (await getStorage()).getSubscriptionPlans();
     const activePlans = plans.filter(p => p.isActive).sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
     
     res.json({
@@ -620,9 +656,9 @@ app.post("/api/auth/supabase-callback", async (req, res) => {
       return res.status(401).json({ error: "Invalid token" });
     }
 
-    let dbUser = await storage.getUserByEmail(user.email);
+    let dbUser = await (await getStorage()).getUserByEmail(user.email);
     if (!dbUser) {
-      dbUser = await storage.createUser({
+      dbUser = await (await getStorage()).createUser({
         email: user.email,
         supabaseId: user.id,
         firstName: user.user_metadata?.full_name?.split(" ")[0],
@@ -631,7 +667,7 @@ app.post("/api/auth/supabase-callback", async (req, res) => {
         role: "seller",
       });
     } else if (!dbUser.supabaseId) {
-      await storage.updateUser(dbUser.id, { 
+      await (await getStorage()).updateUser(dbUser.id, { 
         supabaseId: user.id,
         avatarUrl: user.user_metadata?.avatar_url || dbUser.avatarUrl,
       });
@@ -679,7 +715,7 @@ app.post("/api/admin/login", async (req, res) => {
       });
     }
 
-    const user = await storage.getUserByEmail(email);
+    const user = await (await getStorage()).getUserByEmail(email);
     if (!user || (user.role !== "super_admin" && user.role !== "admin")) {
       return res.status(401).json({ success: false, error: "Invalid credentials" });
     }
@@ -712,7 +748,7 @@ app.post("/api/admin/logout", async (req, res) => {
 // Funnel pages
 app.get("/api/funnels/:funnelId/pages", async (req, res) => {
   try {
-    const pages = await storage.getFunnelPages(req.params.funnelId);
+    const pages = await (await getStorage()).getFunnelPages(req.params.funnelId);
     res.json(pages);
   } catch (error) {
     console.error("Error fetching funnel pages:", error);
@@ -722,7 +758,7 @@ app.get("/api/funnels/:funnelId/pages", async (req, res) => {
 
 app.post("/api/funnels/:funnelId/pages", async (req, res) => {
   try {
-    const page = await storage.createFunnelPage({ ...req.body, funnelId: req.params.funnelId });
+    const page = await (await getStorage()).createFunnelPage({ ...req.body, funnelId: req.params.funnelId });
     res.status(201).json(page);
   } catch (error) {
     console.error("Error creating funnel page:", error);
@@ -732,7 +768,7 @@ app.post("/api/funnels/:funnelId/pages", async (req, res) => {
 
 app.patch("/api/funnel-pages/:id", async (req, res) => {
   try {
-    const page = await storage.updateFunnelPage(req.params.id, req.body);
+    const page = await (await getStorage()).updateFunnelPage(req.params.id, req.body);
     if (!page) return res.status(404).json({ error: "Page not found" });
     res.json(page);
   } catch (error) {
@@ -743,7 +779,7 @@ app.patch("/api/funnel-pages/:id", async (req, res) => {
 
 app.delete("/api/funnel-pages/:id", async (req, res) => {
   try {
-    const deleted = await storage.deleteFunnelPage(req.params.id);
+    const deleted = await (await getStorage()).deleteFunnelPage(req.params.id);
     if (!deleted) return res.status(404).json({ error: "Page not found" });
     res.status(204).send();
   } catch (error) {
@@ -756,7 +792,7 @@ app.delete("/api/funnel-pages/:id", async (req, res) => {
 app.get("/api/order-bumps", async (req, res) => {
   try {
     const userId = await getCurrentUserId(req);
-    const bumps = await storage.getOrderBumps(userId);
+    const bumps = await (await getStorage()).getOrderBumps(userId);
     res.json(bumps);
   } catch (error) {
     console.error("Error fetching order bumps:", error);
@@ -767,7 +803,7 @@ app.get("/api/order-bumps", async (req, res) => {
 app.post("/api/order-bumps", async (req, res) => {
   try {
     const userId = await getCurrentUserId(req);
-    const bump = await storage.createOrderBump({ ...req.body, userId });
+    const bump = await (await getStorage()).createOrderBump({ ...req.body, userId });
     res.status(201).json(bump);
   } catch (error) {
     console.error("Error creating order bump:", error);
@@ -779,7 +815,7 @@ app.post("/api/order-bumps", async (req, res) => {
 app.get("/api/upsells", async (req, res) => {
   try {
     const userId = await getCurrentUserId(req);
-    const upsells = await storage.getUpsells(userId);
+    const upsells = await (await getStorage()).getUpsells(userId);
     res.json(upsells);
   } catch (error) {
     console.error("Error fetching upsells:", error);
@@ -790,7 +826,7 @@ app.get("/api/upsells", async (req, res) => {
 app.post("/api/upsells", async (req, res) => {
   try {
     const userId = await getCurrentUserId(req);
-    const upsell = await storage.createUpsell({ ...req.body, userId });
+    const upsell = await (await getStorage()).createUpsell({ ...req.body, userId });
     res.status(201).json(upsell);
   } catch (error) {
     console.error("Error creating upsell:", error);
@@ -802,7 +838,7 @@ app.post("/api/upsells", async (req, res) => {
 app.get("/api/user/profile", async (req, res) => {
   try {
     const userId = await getCurrentUserId(req);
-    const user = await storage.getUser(userId);
+    const user = await (await getStorage()).getUser(userId);
     if (!user) return res.status(404).json({ error: "User not found" });
     
     const { password, ...safeUser } = user;
@@ -816,7 +852,7 @@ app.get("/api/user/profile", async (req, res) => {
 app.patch("/api/user/profile", async (req, res) => {
   try {
     const userId = await getCurrentUserId(req);
-    const user = await storage.updateUser(userId, req.body);
+    const user = await (await getStorage()).updateUser(userId, req.body);
     if (!user) return res.status(404).json({ error: "User not found" });
     
     const { password, ...safeUser } = user;
@@ -830,7 +866,7 @@ app.patch("/api/user/profile", async (req, res) => {
 // Admin - Subscription Plans Management
 app.get("/api/admin/plans", async (req, res) => {
   try {
-    const plans = await storage.getSubscriptionPlans();
+    const plans = await (await getStorage()).getSubscriptionPlans();
     res.json(plans);
   } catch (error) {
     console.error("Error fetching plans:", error);
@@ -840,7 +876,7 @@ app.get("/api/admin/plans", async (req, res) => {
 
 app.post("/api/admin/plans", async (req, res) => {
   try {
-    const plan = await storage.createSubscriptionPlan(req.body);
+    const plan = await (await getStorage()).createSubscriptionPlan(req.body);
     res.status(201).json(plan);
   } catch (error) {
     console.error("Error creating plan:", error);
@@ -850,7 +886,7 @@ app.post("/api/admin/plans", async (req, res) => {
 
 app.patch("/api/admin/plans/:id", async (req, res) => {
   try {
-    const plan = await storage.updateSubscriptionPlan(req.params.id, req.body);
+    const plan = await (await getStorage()).updateSubscriptionPlan(req.params.id, req.body);
     if (!plan) return res.status(404).json({ error: "Plan not found" });
     res.json(plan);
   } catch (error) {
@@ -861,7 +897,7 @@ app.patch("/api/admin/plans/:id", async (req, res) => {
 
 app.delete("/api/admin/plans/:id", async (req, res) => {
   try {
-    const deleted = await storage.deleteSubscriptionPlan(req.params.id);
+    const deleted = await (await getStorage()).deleteSubscriptionPlan(req.params.id);
     if (!deleted) return res.status(404).json({ error: "Plan not found" });
     res.status(204).send();
   } catch (error) {
@@ -873,7 +909,7 @@ app.delete("/api/admin/plans/:id", async (req, res) => {
 // Admin - Sellers Management
 app.get("/api/admin/sellers", async (req, res) => {
   try {
-    const sellers = await storage.getAllUsers();
+    const sellers = await (await getStorage()).getAllUsers();
     const filteredSellers = sellers.filter(u => u.role === "seller" || !u.role);
     res.json(filteredSellers.map(({ password, ...s }) => s));
   } catch (error) {
@@ -884,7 +920,7 @@ app.get("/api/admin/sellers", async (req, res) => {
 
 app.patch("/api/admin/sellers/:id", async (req, res) => {
   try {
-    const user = await storage.updateUser(req.params.id, req.body);
+    const user = await (await getStorage()).updateUser(req.params.id, req.body);
     if (!user) return res.status(404).json({ error: "Seller not found" });
     const { password, ...safeUser } = user;
     res.json(safeUser);
@@ -898,7 +934,7 @@ app.patch("/api/admin/sellers/:id", async (req, res) => {
 app.get("/api/media", async (req, res) => {
   try {
     const userId = await getCurrentUserId(req);
-    const assets = await storage.getMediaAssets(userId);
+    const assets = await (await getStorage()).getMediaAssets(userId);
     res.json(assets);
   } catch (error) {
     console.error("Error fetching media:", error);
@@ -909,7 +945,7 @@ app.get("/api/media", async (req, res) => {
 app.post("/api/media", async (req, res) => {
   try {
     const userId = await getCurrentUserId(req);
-    const asset = await storage.createMediaAsset({ ...req.body, userId });
+    const asset = await (await getStorage()).createMediaAsset({ ...req.body, userId });
     res.status(201).json(asset);
   } catch (error) {
     console.error("Error creating media:", error);
@@ -919,7 +955,7 @@ app.post("/api/media", async (req, res) => {
 
 app.delete("/api/media/:id", async (req, res) => {
   try {
-    const deleted = await storage.deleteMediaAsset(req.params.id);
+    const deleted = await (await getStorage()).deleteMediaAsset(req.params.id);
     if (!deleted) return res.status(404).json({ error: "Media not found" });
     res.status(204).send();
   } catch (error) {
@@ -931,7 +967,7 @@ app.delete("/api/media/:id", async (req, res) => {
 // Product files
 app.get("/api/products/:productId/files", async (req, res) => {
   try {
-    const files = await storage.getProductFiles(req.params.productId);
+    const files = await (await getStorage()).getProductFiles(req.params.productId);
     res.json(files);
   } catch (error) {
     console.error("Error fetching product files:", error);
@@ -941,7 +977,7 @@ app.get("/api/products/:productId/files", async (req, res) => {
 
 app.post("/api/products/:productId/files", async (req, res) => {
   try {
-    const file = await storage.createProductFile({ ...req.body, productId: req.params.productId });
+    const file = await (await getStorage()).createProductFile({ ...req.body, productId: req.params.productId });
     res.status(201).json(file);
   } catch (error) {
     console.error("Error creating product file:", error);
@@ -951,7 +987,7 @@ app.post("/api/products/:productId/files", async (req, res) => {
 
 app.delete("/api/product-files/:id", async (req, res) => {
   try {
-    const deleted = await storage.deleteProductFile(req.params.id);
+    const deleted = await (await getStorage()).deleteProductFile(req.params.id);
     if (!deleted) return res.status(404).json({ error: "File not found" });
     res.status(204).send();
   } catch (error) {
@@ -968,7 +1004,7 @@ app.post("/api/orders", async (req, res) => {
     const confirmationToken = crypto.randomBytes(32).toString("hex");
     const orderNumber = `ORD-${Date.now().toString(36).toUpperCase()}`;
     
-    const order = await storage.createOrder({
+    const order = await (await getStorage()).createOrder({
       ...req.body,
       userId,
       orderNumber,
@@ -985,12 +1021,12 @@ app.post("/api/orders", async (req, res) => {
 // Order confirmation page (public)
 app.get("/api/order-confirmation/:token", async (req, res) => {
   try {
-    const order = await storage.getOrderByConfirmationToken(req.params.token);
+    const order = await (await getStorage()).getOrderByConfirmationToken(req.params.token);
     if (!order) return res.status(404).json({ error: "Order not found" });
 
-    const customer = order.customerId ? await storage.getCustomer(order.customerId) : null;
-    const items = await storage.getOrderItems(order.id);
-    const seller = await storage.getUser(order.userId);
+    const customer = order.customerId ? await (await getStorage()).getCustomer(order.customerId) : null;
+    const items = await (await getStorage()).getOrderItems(order.id);
+    const seller = await (await getStorage()).getUser(order.userId);
 
     res.json({
       order: {
