@@ -1,18 +1,20 @@
-import { createClient } from "@supabase/supabase-js";
+import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
 const supabaseUrl = process.env.SUPABASE_URL || "";
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 
-if (!supabaseUrl || !supabaseServiceKey) {
-  console.warn("Supabase Storage: Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY - file uploads will not work");
-}
+let supabase: SupabaseClient | null = null;
 
-const supabase = createClient(supabaseUrl, supabaseServiceKey, {
-  auth: {
-    autoRefreshToken: false,
-    persistSession: false,
-  },
-});
+if (supabaseUrl && supabaseServiceKey) {
+  supabase = createClient(supabaseUrl, supabaseServiceKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+  });
+} else {
+  console.warn("Supabase Storage: Missing credentials - file uploads will not work");
+}
 
 const PRODUCT_FILES_BUCKET = "product-files";
 const MEDIA_ASSETS_BUCKET = "media-assets";
@@ -31,6 +33,8 @@ export interface SignedUrlResult {
 }
 
 async function ensureBucketExists(bucketName: string): Promise<boolean> {
+  if (!supabase) return false;
+  
   try {
     const { data: buckets } = await supabase.storage.listBuckets();
     const exists = buckets?.some((b) => b.name === bucketName);
@@ -59,7 +63,7 @@ export async function uploadProductFile(
   fileName: string,
   mimeType: string
 ): Promise<UploadResult> {
-  if (!supabaseUrl || !supabaseServiceKey) {
+  if (!supabase) {
     return { success: false, error: "Supabase Storage not configured" };
   }
 
@@ -93,7 +97,7 @@ export async function uploadMediaAsset(
   fileName: string,
   mimeType: string
 ): Promise<UploadResult> {
-  if (!supabaseUrl || !supabaseServiceKey) {
+  if (!supabase) {
     return { success: false, error: "Supabase Storage not configured" };
   }
 
@@ -131,7 +135,7 @@ export async function getSignedDownloadUrl(
   path: string,
   expiresInSeconds: number = 3600
 ): Promise<SignedUrlResult> {
-  if (!supabaseUrl || !supabaseServiceKey) {
+  if (!supabase) {
     return { success: false, error: "Supabase Storage not configured" };
   }
 
@@ -157,7 +161,7 @@ export async function getSecureProductDownloadUrl(
 }
 
 export async function deleteFile(bucket: string, path: string): Promise<boolean> {
-  if (!supabaseUrl || !supabaseServiceKey) {
+  if (!supabase) {
     return false;
   }
 

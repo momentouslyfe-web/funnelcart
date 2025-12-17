@@ -1,24 +1,32 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-if (!supabaseUrl || !supabaseServiceKey) {
-  console.warn('Supabase credentials not configured for server');
+let supabaseAdmin: SupabaseClient | null = null;
+
+if (supabaseUrl && supabaseServiceKey) {
+  supabaseAdmin = createClient(
+    supabaseUrl,
+    supabaseServiceKey,
+    {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+    }
+  );
+} else {
+  console.warn('Supabase credentials not configured - Supabase features disabled');
 }
 
-export const supabaseAdmin = createClient(
-  supabaseUrl || '',
-  supabaseServiceKey || '',
-  {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false,
-    },
-  }
-);
+export { supabaseAdmin };
 
 export async function verifySupabaseToken(token: string) {
+  if (!supabaseAdmin) {
+    return null;
+  }
+  
   try {
     const { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
     
