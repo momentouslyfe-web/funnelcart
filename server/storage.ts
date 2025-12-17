@@ -1,5 +1,22 @@
-import { db } from "./db";
+import { db as dbInstance } from "./db";
 import { eq, and, desc, sql } from "drizzle-orm";
+
+// Wrapper to ensure db is available
+function getDb() {
+  if (!dbInstance) {
+    throw new Error("Database not configured. Set SUPABASE_DATABASE_URL or DATABASE_URL environment variable.");
+  }
+  return dbInstance;
+}
+
+// Use getter for all db operations
+const db = new Proxy({} as NonNullable<typeof dbInstance>, {
+  get(_, prop) {
+    const instance = getDb();
+    const value = (instance as any)[prop];
+    return typeof value === 'function' ? value.bind(instance) : value;
+  }
+});
 import {
   users,
   products,
