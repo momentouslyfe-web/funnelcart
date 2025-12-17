@@ -6,8 +6,7 @@
   "functions": {
     "api/**/*.ts": {
       "maxDuration": 30,
-      "memory": 1024,
-      "includeFiles": "shared/**,server/**"
+      "memory": 1024
     }
   },
   "rewrites": [
