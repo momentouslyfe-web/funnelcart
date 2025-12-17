@@ -141,6 +141,15 @@ export interface IStorage {
   getSubscriptionPlan(id: string): Promise<SubscriptionPlan | undefined>;
   createSubscriptionPlan(plan: InsertSubscriptionPlan): Promise<SubscriptionPlan>;
   updateSubscriptionPlan(id: string, data: Partial<SubscriptionPlan>): Promise<SubscriptionPlan | undefined>;
+  deleteSubscriptionPlan(id: string): Promise<boolean>;
+
+  // Order Bumps
+  getOrderBumps(checkoutPageId: string): Promise<OrderBump[]>;
+  createOrderBump(bump: InsertOrderBump): Promise<OrderBump>;
+
+  // Upsells
+  getUpsells(checkoutPageId: string): Promise<Upsell[]>;
+  createUpsell(upsell: InsertUpsell): Promise<Upsell>;
 
   // Admin - Platform Settings
   getPlatformSettings(): Promise<Record<string, any>>;
@@ -186,6 +195,7 @@ export interface IStorage {
   // Product Files
   getProductFiles(productId: string): Promise<ProductFile[]>;
   createProductFile(file: InsertProductFile): Promise<ProductFile>;
+  deleteProductFile(id: string): Promise<boolean>;
 
   // Order Item
   getOrderItem(id: string): Promise<OrderItem | undefined>;
@@ -489,6 +499,31 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
+  async deleteSubscriptionPlan(id: string): Promise<boolean> {
+    const result = await db.delete(subscriptionPlans).where(eq(subscriptionPlans.id, id)).returning();
+    return result.length > 0;
+  }
+
+  // Order Bumps
+  async getOrderBumps(checkoutPageId: string): Promise<OrderBump[]> {
+    return db.select().from(orderBumps).where(eq(orderBumps.checkoutPageId, checkoutPageId));
+  }
+
+  async createOrderBump(bump: InsertOrderBump): Promise<OrderBump> {
+    const [created] = await db.insert(orderBumps).values(bump).returning();
+    return created;
+  }
+
+  // Upsells
+  async getUpsells(checkoutPageId: string): Promise<Upsell[]> {
+    return db.select().from(upsells).where(eq(upsells.checkoutPageId, checkoutPageId));
+  }
+
+  async createUpsell(upsell: InsertUpsell): Promise<Upsell> {
+    const [created] = await db.insert(upsells).values(upsell).returning();
+    return created;
+  }
+
   // Admin - Platform Settings
   async getPlatformSettings(): Promise<Record<string, any>> {
     const settings = await db.select().from(platformSettings);
@@ -694,6 +729,11 @@ export class DatabaseStorage implements IStorage {
   async createProductFile(file: InsertProductFile): Promise<ProductFile> {
     const [created] = await db.insert(productFiles).values(file).returning();
     return created;
+  }
+
+  async deleteProductFile(id: string): Promise<boolean> {
+    const result = await db.delete(productFiles).where(eq(productFiles.id, id)).returning();
+    return result.length > 0;
   }
 
   // Order Item
